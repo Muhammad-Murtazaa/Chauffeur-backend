@@ -162,11 +162,12 @@ describe('DriverService', () => {
       expect(result.make).toBe('Mercedes-Benz');
     });
 
-    it('should throw NotFoundException if no vehicle found', async () => {
+    it('should return null if no vehicle found', async () => {
       mockDb.query.drivers.findFirst.mockResolvedValueOnce(mockDriver);
       mockDb.query.vehicles.findFirst.mockResolvedValueOnce(null);
 
-      await expect(service.getVehicle(10)).rejects.toThrow(NotFoundException);
+      const result = await service.getVehicle(10);
+      expect(result).toBeNull();
     });
   });
 
