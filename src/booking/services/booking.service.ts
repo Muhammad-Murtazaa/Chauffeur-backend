@@ -376,10 +376,25 @@ export class BookingService {
         const pickupStop = stops.find((s) => s.type === 'PICKUP') || stops[0];
         const dropoffStop = stops.find((s) => s.type === 'DROPOFF') || stops[stops.length - 1];
 
+        const dateObj = b.pickupAt ? new Date(b.pickupAt) : null;
+        const pickupAddr = pickupStop?.address || 'Pickup location';
+        const dropoffAddr = dropoffStop?.address || 'Dropoff location';
+        const formattedFare = `$${Number(b.totalPrice || 0).toFixed(2)}`;
+
         return {
           ...b,
-          pickupAddress: pickupStop?.address || 'Pickup location',
-          dropoffAddress: dropoffStop?.address || 'Dropoff location',
+          id: b.referenceNumber || String(b.bookingId),
+          fare: formattedFare,
+          pickup: pickupAddr,
+          dropoff: dropoffAddr,
+          pickupAddress: pickupAddr,
+          dropoffAddress: dropoffAddr,
+          status: b.assignmentStatus,
+          scheduledDate: dateObj ? dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Upcoming',
+          scheduledTime: dateObj ? dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '',
+          time: dateObj ? dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Upcoming',
+          distance: b.distanceMeters ? `${(Number(b.distanceMeters) / 1609.34).toFixed(1)} miles` : undefined,
+          duration: b.estimatedDurationSeconds ? `~${Math.round(Number(b.estimatedDurationSeconds) / 60)} mins` : undefined,
         };
       }),
     );

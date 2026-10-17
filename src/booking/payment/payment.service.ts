@@ -4,7 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { DRIZZLE } from '../../database';
 import type { DrizzleDb } from '../../database';
 import {
@@ -13,13 +13,18 @@ import {
   bookingStatusHistory,
 } from '../../database/schema';
 import { ProcessPaymentDto } from '../dto';
+import { DriverAssignmentService } from '../assignment/driver-assignment.service';
 
 @Injectable()
 export class PaymentService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDb,
+    private readonly driverAssignmentService: DriverAssignmentService,
+  ) {}
 
   /**
-   * Process payment for a booking
+   * Process payment for a booking.
+   * On successful payment, auto-assigns the least-recently-assigned eligible driver.
    */
   async processPayment(
     bookingId: number,
@@ -69,7 +74,7 @@ export class PaymentService {
       })
       .returning();
 
-    // 2. Update Booking Status
+    // 2. Update Booking Status to CONFIRMED
     const oldStatus = booking.bookingStatus;
     const newStatus = isSuccess ? 'CONFIRMED' : 'PAYMENT_FAILED';
     const newPaymentStatus = isSuccess ? 'PAID' : 'FAILED';
@@ -95,12 +100,21 @@ export class PaymentService {
         : `Payment failed via ${provider}. Reason: Simulated decline.`,
     });
 
+    // 4. Auto-assign a driver immediately after successful payment
+    let autoAssignment: { assigned: boolean; message: string; assignment?: any } | null = null;
+    if (isSuccess) {
+      autoAssignment = await this.driverAssignmentService.autoAssignDriver(booking.id);
+    }
+
     return {
       success: isSuccess,
       payment: paymentRecord,
       booking: updatedBooking,
+      autoAssignment,
       message: isSuccess
-        ? 'Payment authorized and booking confirmed.'
+        ? autoAssignment?.assigned
+          ? `Payment confirmed and driver auto-assigned. ${autoAssignment.message}`
+          : `Payment confirmed. ${autoAssignment?.message ?? 'Awaiting driver dispatch.'}`
         : 'Payment could not be processed.',
     };
   }

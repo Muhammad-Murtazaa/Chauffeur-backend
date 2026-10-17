@@ -5,7 +5,7 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
-import { eq, and, or, inArray, sql } from 'drizzle-orm';
+import { eq, and, or, inArray, sql, desc, isNull } from 'drizzle-orm';
 import { DRIZZLE } from '../../database';
 import type { DrizzleDb } from '../../database';
 import {
@@ -297,5 +297,180 @@ export class DriverAssignmentService {
       undefined,
       reason ? `Reassignment reason: ${reason}` : 'Reassignment by dispatch admin',
     );
+  }
+
+  /**
+   * Auto-assign the best available driver to a booking after payment.
+   *
+   * Strategy: "Least Recently Assigned"
+   *   1. Filter by: ACTIVE status, APPROVED verification, APPROVED vehicle,
+   *      vehicle category match, and no overlapping schedule (±30 min buffer).
+   *   2. Among eligible drivers, prefer the one whose last assignment is oldest
+   *      (or null = never assigned → highest priority).
+   *   3. If no eligible driver is found, leave booking as CONFIRMED so an admin
+   *      can manually dispatch later.
+   *
+   * Returns the assignment result or null if no driver was available.
+   */
+  async autoAssignDriver(bookingId: number): Promise<{
+    assigned: boolean;
+    message: string;
+    assignment?: any;
+  }> {
+    // 1. Fetch booking + required vehicle category
+    const [booking] = await this.db
+      .select({
+        id: bookings.id,
+        pickupAt: bookings.pickupAt,
+        estimatedDurationSeconds: bookings.estimatedDurationSeconds,
+        vehicleTypeId: bookings.vehicleTypeId,
+        bookingStatus: bookings.bookingStatus,
+      })
+      .from(bookings)
+      .where(eq(bookings.id, bookingId));
+
+    if (!booking) {
+      throw new NotFoundException(`Booking #${bookingId} not found.`);
+    }
+
+    const [vType] = await this.db
+      .select()
+      .from(vehicleTypes)
+      .where(eq(vehicleTypes.id, booking.vehicleTypeId));
+
+    if (!vType) {
+      return { assigned: false, message: 'Vehicle type not found for this booking.' };
+    }
+
+    // 2. Fetch all active, verified drivers with an approved vehicle (prioritizing exact category)
+    let candidates = await this.db
+      .select({
+        driverId: drivers.id,
+        vehicleId: vehicles.id,
+        vehicleCategory: vehicles.category,
+        // Least-recently-assigned: pull the max(assignedAt) per driver
+        lastAssignedAt: sql<string | null>`(
+          SELECT MAX(ba."assigned_at")
+          FROM booking_assignments ba
+          WHERE ba."driver_id" = ${drivers.id}
+            AND ba."status" IN ('ASSIGNED', 'ACCEPTED', 'COMPLETED')
+        )`,
+      })
+      .from(drivers)
+      .innerJoin(users, eq(drivers.userId, users.id))
+      .innerJoin(vehicles, eq(drivers.id, vehicles.driverId))
+      .where(
+        and(
+          eq(drivers.status, 'ACTIVE'),
+          eq(drivers.verificationStatus, 'APPROVED'),
+          eq(vehicles.status, 'APPROVED'),
+          eq(vehicles.category, vType.category),
+        ),
+      );
+
+    let isFallback = false;
+    // Fallback: If no driver has this exact vehicle category, fall back to any active driver with an approved vehicle
+    if (candidates.length === 0) {
+      candidates = await this.db
+        .select({
+          driverId: drivers.id,
+          vehicleId: vehicles.id,
+          vehicleCategory: vehicles.category,
+          lastAssignedAt: sql<string | null>`(
+            SELECT MAX(ba."assigned_at")
+            FROM booking_assignments ba
+            WHERE ba."driver_id" = ${drivers.id}
+              AND ba."status" IN ('ASSIGNED', 'ACCEPTED', 'COMPLETED')
+          )`,
+        })
+        .from(drivers)
+        .innerJoin(users, eq(drivers.userId, users.id))
+        .innerJoin(vehicles, eq(drivers.id, vehicles.driverId))
+        .where(
+          and(
+            eq(drivers.status, 'ACTIVE'),
+            eq(drivers.verificationStatus, 'APPROVED'),
+            eq(vehicles.status, 'APPROVED'),
+          ),
+        );
+      isFallback = true;
+    }
+
+    if (candidates.length === 0) {
+      return {
+        assigned: false,
+        message: `No active drivers with approved vehicles found in system. Booking remains CONFIRMED for manual dispatch.`,
+      };
+    }
+
+    // 3. Conflict-check each candidate and collect eligible ones
+    const bookingStart = new Date(booking.pickupAt).getTime();
+    const durationMs = (booking.estimatedDurationSeconds || 3600) * 1000;
+    const bufferMs = 30 * 60 * 1000;
+    const bookingEnd = bookingStart + durationMs + bufferMs;
+
+    const eligible: typeof candidates = [];
+
+    for (const cand of candidates) {
+      const overlapping = await this.db
+        .select({
+          pickupAt: bookings.pickupAt,
+          duration: bookings.estimatedDurationSeconds,
+        })
+        .from(bookingAssignments)
+        .innerJoin(bookings, eq(bookingAssignments.bookingId, bookings.id))
+        .where(
+          and(
+            eq(bookingAssignments.driverId, cand.driverId),
+            inArray(bookingAssignments.status, ['ASSIGNED', 'ACCEPTED']),
+          ),
+        );
+
+      const hasConflict = overlapping.some((asgn) => {
+        const s = new Date(asgn.pickupAt).getTime();
+        const e = s + (asgn.duration || 3600) * 1000 + bufferMs;
+        return bookingStart < e && bookingEnd > s;
+      });
+
+      if (!hasConflict) {
+        eligible.push(cand);
+      }
+    }
+
+    if (eligible.length === 0) {
+      return {
+        assigned: false,
+        message: `All drivers for category "${vType.category}" are busy during this time slot. Booking remains CONFIRMED for manual dispatch.`,
+      };
+    }
+
+    // 4. Sort by least recently assigned (null = never assigned → highest priority)
+    eligible.sort((a, b) => {
+      if (!a.lastAssignedAt && !b.lastAssignedAt) return 0;
+      if (!a.lastAssignedAt) return -1; // a was never assigned → comes first
+      if (!b.lastAssignedAt) return 1;
+      return new Date(a.lastAssignedAt).getTime() - new Date(b.lastAssignedAt).getTime();
+    });
+
+    const chosen = eligible[0];
+
+    const note = isFallback
+      ? `Auto-assigned by system (fallback available driver; exact ${vType.category} driver not online).`
+      : 'Auto-assigned by system after successful payment (Least Recently Assigned strategy).';
+
+    // 5. Delegate to the existing assignDriver method (handles DB writes + audit log)
+    const result = await this.assignDriver(
+      bookingId,
+      chosen.driverId,
+      null as any, // system-initiated (null = auto-dispatch, no human actor)
+      chosen.vehicleId,
+      note,
+    );
+
+    return {
+      assigned: true,
+      message: `Driver #${chosen.driverId} auto-assigned successfully.`,
+      assignment: result.assignment,
+    };
   }
 }
