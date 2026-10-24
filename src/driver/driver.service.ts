@@ -15,6 +15,7 @@ import {
   vehiclePhotos,
   verificationHistory,
   users,
+  driverPayouts,
 } from '../database';
 import type { DrizzleDb } from '../database';
 import {
@@ -549,6 +550,29 @@ export class DriverService {
       where: eq(driverDocuments.driverId, driver.id),
     });
 
+    // Query actual earnings from completed rides
+    const payouts = await this.db
+      .select()
+      .from(driverPayouts)
+      .where(eq(driverPayouts.driverId, driver.id));
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const startOfWeek = new Date();
+    const dayOfWeek = startOfWeek.getDay() || 7;
+    startOfWeek.setDate(startOfWeek.getDate() - dayOfWeek + 1);
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    let todayEarnings = 0;
+    let weekEarnings = 0;
+    for (const p of payouts) {
+      const amount = Number(p.driverEarnings) || 0;
+      const createdAt = new Date(p.createdAt);
+      if (createdAt >= today) todayEarnings += amount;
+      if (createdAt >= startOfWeek) weekEarnings += amount;
+    }
+
     return {
       user: user
         ? {
@@ -563,9 +587,9 @@ export class DriverService {
       vehicle: vehicle || null,
       documentsCount: driverDocs.length,
       stats: {
-        todayEarnings: '$0.00',
-        weekEarnings: '$0.00',
-        completedTrips: 0,
+        todayEarnings: `$${todayEarnings.toFixed(2)}`,
+        weekEarnings: `$${weekEarnings.toFixed(2)}`,
+        completedTrips: payouts.length,
         rating: '5.0',
       },
       activeRide: null,

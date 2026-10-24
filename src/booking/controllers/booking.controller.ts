@@ -13,6 +13,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { BookingService } from '../services/booking.service';
 import { PaymentService } from '../payment/payment.service';
 import { CreateBookingDto, ProcessPaymentDto, CancelBookingDto } from '../dto';
+import { StripeService } from '../payment/stripe.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 
@@ -24,6 +25,7 @@ export class BookingController {
   constructor(
     private readonly bookingService: BookingService,
     private readonly paymentService: PaymentService,
+    private readonly stripeService: StripeService,
   ) {}
 
   @Post()
@@ -51,6 +53,29 @@ export class BookingController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.bookingService.getBookingDetails(id, user);
+  }
+
+  @Post(':id/create-payment-intent')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Create Stripe PaymentIntent for booking' })
+  async createPaymentIntent(
+    @CurrentUser('id') userId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const booking = await this.bookingService.getBookingDetails(id, {
+      id: userId,
+      role: 'CUSTOMER',
+    });
+    return this.stripeService.createPaymentIntent({
+      amount: Number(booking.totalPrice),
+      currency: booking.currency,
+      bookingId: booking.id,
+      customerEmail: booking.passengerEmail,
+      metadata: {
+        referenceNumber: booking.referenceNumber,
+        passengerName: booking.passengerName,
+      },
+    });
   }
 
   @Post(':id/payment')

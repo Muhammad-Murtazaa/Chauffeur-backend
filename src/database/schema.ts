@@ -264,6 +264,10 @@ export const drivers = pgTable(
 
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
 
+    stripeAccountId: varchar("stripe_account_id", { length: 255 }),
+    stripePayoutsEnabled: boolean("stripe_payouts_enabled").notNull().default(false),
+    stripeDetailsSubmitted: boolean("stripe_details_submitted").notNull().default(false),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1340,6 +1344,73 @@ export const ridesRelations = relations(rides, ({ one }) => ({
   vehicle: one(vehicles, {
     fields: [rides.vehicleId],
     references: [vehicles.id],
+  }),
+}));
+
+export const driverPayouts = pgTable(
+  "driver_payouts",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+
+    driverId: bigint("driver_id", { mode: "number" })
+      .notNull()
+      .references(() => drivers.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+
+    bookingId: bigint("booking_id", { mode: "number" })
+      .notNull()
+      .references(() => bookings.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+
+    rideId: bigint("ride_id", { mode: "number" }).references(() => rides.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+
+    totalFare: numeric("total_fare", { precision: 10, scale: 2 }).notNull(),
+    driverRatePercent: numeric("driver_rate_percent", { precision: 5, scale: 2 })
+      .notNull()
+      .default("80.00"),
+    driverEarnings: numeric("driver_earnings", { precision: 10, scale: 2 }).notNull(),
+    platformFee: numeric("platform_fee", { precision: 10, scale: 2 }).notNull(),
+    currency: varchar("currency", { length: 10 }).notNull().default("USD"),
+
+    status: varchar("status", { length: 30 }).notNull().default("PENDING"), // PENDING, PAID, FAILED, ON_HOLD
+    stripeTransferId: varchar("stripe_transfer_id", { length: 255 }),
+    stripePayoutId: varchar("stripe_payout_id", { length: 255 }),
+    transferredAt: timestamp("transferred_at", { withTimezone: true }),
+    failureReason: text("failure_reason"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    driverIdx: index("driver_payouts_driver_id_idx").on(table.driverId),
+    bookingIdx: index("driver_payouts_booking_id_idx").on(table.bookingId),
+    statusIdx: index("driver_payouts_status_idx").on(table.status),
+  }),
+);
+
+export const driverPayoutsRelations = relations(driverPayouts, ({ one }) => ({
+  driver: one(drivers, {
+    fields: [driverPayouts.driverId],
+    references: [drivers.id],
+  }),
+  booking: one(bookings, {
+    fields: [driverPayouts.bookingId],
+    references: [bookings.id],
+  }),
+  ride: one(rides, {
+    fields: [driverPayouts.rideId],
+    references: [rides.id],
   }),
 }));
 

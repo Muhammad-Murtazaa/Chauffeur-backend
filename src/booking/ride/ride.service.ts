@@ -16,10 +16,14 @@ import {
   bookingStatusHistory,
 } from '../../database/schema';
 import { DriverActionDto } from '../dto';
+import { StripeService } from '../payment/stripe.service';
 
 @Injectable()
 export class RideService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDb,
+    private readonly stripeService: StripeService,
+  ) {}
 
   /**
    * Helper to resolve driver record from User ID
@@ -436,10 +440,22 @@ export class RideService {
       reason: `Ride completed successfully. Destination reached.`,
     });
 
+    // Automatically calculate & distribute driver earnings (80% payout) via Stripe
+    let payoutResult: any = null;
+    try {
+      payoutResult = await this.stripeService.processRideDriverPayout(
+        bookingId,
+        driver.id,
+      );
+    } catch (payoutErr: any) {
+      // Payout errors logged inside StripeService
+    }
+
     return {
       success: true,
       message: 'Ride completed successfully.',
       status: newStatus,
+      payout: payoutResult,
     };
   }
 

@@ -251,6 +251,54 @@ export class EmailService {
   }
 
   /**
+   * Send driver earnings notification email upon ride completion
+   */
+  async sendDriverPayoutNotification(data: {
+    driverEmail: string;
+    driverName: string;
+    bookingReference: string;
+    totalFare: number;
+    driverEarnings: number;
+    platformFee: number;
+    currency: string;
+    status: string;
+  }): Promise<boolean> {
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b1219; color: #f4f4f5; padding: 24px;">
+  <div style="max-width: 560px; margin: 0 auto; background: #111a24; border-radius: 16px; border: 1px solid #243243; overflow: hidden;">
+    <div style="background: #060b10; padding: 24px; text-align: center; border-bottom: 2px solid #e09900;">
+      <div style="color: #e09900; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 2px;">Chauffeur Payout</div>
+      <h2 style="color: #ffffff; margin: 6px 0 0 0;">Trip Earnings Processed</h2>
+    </div>
+    <div style="padding: 24px;">
+      <p style="margin-top: 0; font-size: 15px; color: #cbd5e1;">Hello <strong>${data.driverName}</strong>,</p>
+      <p style="font-size: 14px; color: #cbd5e1; line-height: 1.5;">
+        You have successfully completed ride <strong>${data.bookingReference}</strong>. Your earnings have been credited to your payout balance.
+      </p>
+      <div style="background: rgba(224, 153, 0, 0.1); border: 1px solid rgba(224, 153, 0, 0.3); border-radius: 12px; padding: 18px; text-align: center; margin: 20px 0;">
+        <div style="font-size: 12px; text-transform: uppercase; color: #94a3b8; font-weight: bold;">Your Net Earnings (80%)</div>
+        <div style="font-size: 32px; font-weight: 800; color: #e09900; margin-top: 4px;">$${data.driverEarnings.toFixed(2)} ${data.currency}</div>
+        <div style="font-size: 12px; color: #64748b; margin-top: 4px;">Total Trip Fare: $${data.totalFare.toFixed(2)} | Platform Fee: $${data.platformFee.toFixed(2)}</div>
+      </div>
+      <div style="font-size: 13px; color: #94a3b8; background: #182433; padding: 14px; border-radius: 8px;">
+        Payout Status: <strong style="color: ${data.status === 'PAID' ? '#22c55e' : '#f59e0b'};">${data.status}</strong>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+    `;
+
+    return this.sendMail({
+      to: data.driverEmail,
+      subject: `Earnings Confirmed: +$${data.driverEarnings.toFixed(2)} for Ride ${data.bookingReference}`,
+      html: htmlContent,
+    });
+  }
+
+  /**
    * Internal sender helper
    */
   private async sendMail(options: {
