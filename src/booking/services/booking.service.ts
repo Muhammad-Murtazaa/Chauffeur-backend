@@ -23,10 +23,14 @@ import {
   vehicles,
 } from '../../database/schema';
 import { CreateBookingDto, CancelBookingDto } from '../dto';
+import { EmailService } from '../../email';
 
 @Injectable()
 export class BookingService {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDb,
+    private readonly emailService: EmailService,
+  ) {}
 
   /**
    * Helper to generate unique reference e.g. CH-20260927-A82K
@@ -153,7 +157,17 @@ export class BookingService {
       reason: `Booking initialized with reference ${referenceNumber} via quote #${quote.id}.`,
     });
 
-    return this.getBookingDetails(insertedBooking.id, { id: userId, role: 'CUSTOMER' });
+    const bookingDetails = await this.getBookingDetails(insertedBooking.id, { id: userId, role: 'CUSTOMER' });
+
+    // Send notifications via Resend asynchronously (non-blocking)
+    Promise.all([
+      this.emailService.sendBookingConfirmation(bookingDetails as any),
+      this.emailService.sendAdminBookingAlert(bookingDetails as any),
+    ]).catch(() => {
+      // Failures are logged internally inside EmailService
+    });
+
+    return bookingDetails;
   }
 
   /**
