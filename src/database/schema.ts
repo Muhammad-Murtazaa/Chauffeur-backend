@@ -268,6 +268,10 @@ export const drivers = pgTable(
     stripePayoutsEnabled: boolean("stripe_payouts_enabled").notNull().default(false),
     stripeDetailsSubmitted: boolean("stripe_details_submitted").notNull().default(false),
 
+    squareCustomerId: varchar("square_customer_id", { length: 255 }),
+    squarePayoutAccountId: varchar("square_payout_account_id", { length: 255 }),
+    squarePayoutsEnabled: boolean("square_payouts_enabled").notNull().default(false),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1027,10 +1031,11 @@ export const payments = pgTable(
         onUpdate: "cascade",
       }),
 
-    provider: paymentProviderEnum("provider").notNull().default("STRIPE"),
+    provider: paymentProviderEnum("provider").notNull().default("SQUARE"),
 
     providerPaymentId: varchar("provider_payment_id", { length: 255 }),
     providerSessionId: varchar("provider_session_id", { length: 255 }),
+    squareOrderId: varchar("square_order_id", { length: 255 }),
 
     amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
     currency: varchar("currency", { length: 10 }).notNull().default("USD"),
@@ -1382,6 +1387,9 @@ export const driverPayouts = pgTable(
     status: varchar("status", { length: 30 }).notNull().default("PENDING"), // PENDING, PAID, FAILED, ON_HOLD
     stripeTransferId: varchar("stripe_transfer_id", { length: 255 }),
     stripePayoutId: varchar("stripe_payout_id", { length: 255 }),
+    squarePaymentId: varchar("square_payment_id", { length: 255 }),
+    squarePayoutId: varchar("square_payout_id", { length: 255 }),
+    squareTransferId: varchar("square_transfer_id", { length: 255 }),
     transferredAt: timestamp("transferred_at", { withTimezone: true }),
     failureReason: text("failure_reason"),
 

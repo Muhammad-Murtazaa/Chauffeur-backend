@@ -14,12 +14,14 @@ import {
 } from '../../database/schema';
 import { ProcessPaymentDto } from '../dto';
 import { DriverAssignmentService } from '../assignment/driver-assignment.service';
+import { SquareService } from './square.service';
 
 @Injectable()
 export class PaymentService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDb,
     private readonly driverAssignmentService: DriverAssignmentService,
+    private readonly squareService: SquareService,
   ) {}
 
   /**
@@ -50,13 +52,35 @@ export class PaymentService {
       throw new BadRequestException('This booking has already been paid.');
     }
 
-    const provider = dto.provider || 'MOCK';
-    const isMock = provider === 'MOCK';
-    const isSuccess = isMock ? (dto.mockSuccess !== false) : true;
+    const provider = dto.provider || 'SQUARE';
+    let isSuccess = true;
+    let providerPaymentId = dto.paymentMethodId || `sq_${Date.now()}`;
+    let errorMessage: string | null = null;
 
-    const providerPaymentId = isMock
-      ? `mock_pay_${Date.now()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`
-      : dto.paymentMethodId || `pay_${Date.now()}`;
+    if (provider === 'SQUARE') {
+      try {
+        const sqResult = await this.squareService.processSquarePayment({
+          sourceId: dto.paymentMethodId,
+          bookingId: booking.id,
+          amount: Number(booking.totalPrice),
+          currency: booking.currency,
+          customerEmail: booking.passengerEmail,
+          referenceNumber: booking.referenceNumber,
+        });
+        isSuccess = sqResult.success;
+        providerPaymentId = sqResult.paymentId;
+      } catch (err: any) {
+        isSuccess = false;
+        errorMessage = err.message || 'Square payment authorization failed';
+      }
+    } else {
+      const isMock = provider === 'MOCK';
+      isSuccess = isMock ? dto.mockSuccess !== false : true;
+      providerPaymentId = isMock
+        ? `mock_pay_${Date.now()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+        : dto.paymentMethodId || `pay_${Date.now()}`;
+      errorMessage = isSuccess ? null : 'Simulated payment failure / decline';
+    }
 
     // 1. Create Payment Record
     const [paymentRecord] = await this.db
@@ -70,7 +94,7 @@ export class PaymentService {
         status: isSuccess ? 'PAID' : 'FAILED',
         paidAt: isSuccess ? new Date() : null,
         failedAt: isSuccess ? null : new Date(),
-        errorMessage: isSuccess ? null : 'Simulated payment failure / decline',
+        errorMessage,
       })
       .returning();
 

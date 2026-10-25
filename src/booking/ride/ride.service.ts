@@ -16,13 +16,13 @@ import {
   bookingStatusHistory,
 } from '../../database/schema';
 import { DriverActionDto } from '../dto';
-import { StripeService } from '../payment/stripe.service';
+import { SquareService } from '../payment/square.service';
 
 @Injectable()
 export class RideService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDb,
-    private readonly stripeService: StripeService,
+    private readonly squareService: SquareService,
   ) {}
 
   /**
@@ -440,15 +440,15 @@ export class RideService {
       reason: `Ride completed successfully. Destination reached.`,
     });
 
-    // Automatically calculate & distribute driver earnings (80% payout) via Stripe
+    // Automatically calculate & distribute driver earnings (80% payout) via Square
     let payoutResult: any = null;
     try {
-      payoutResult = await this.stripeService.processRideDriverPayout(
+      payoutResult = await this.squareService.processRideDriverPayout(
         bookingId,
         driver.id,
       );
     } catch (payoutErr: any) {
-      // Payout errors logged inside StripeService
+      // Payout errors logged inside SquareService
     }
 
     return {
