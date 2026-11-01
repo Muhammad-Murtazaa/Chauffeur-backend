@@ -14,14 +14,14 @@ import {
 } from '../../database/schema';
 import { ProcessPaymentDto } from '../dto';
 import { DriverAssignmentService } from '../assignment/driver-assignment.service';
-import { SquareService } from './square.service';
+import { StripeService } from './stripe.service';
 
 @Injectable()
 export class PaymentService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDb,
     private readonly driverAssignmentService: DriverAssignmentService,
-    private readonly squareService: SquareService,
+    private readonly stripeService: StripeService,
   ) {}
 
   /**
@@ -52,26 +52,26 @@ export class PaymentService {
       throw new BadRequestException('This booking has already been paid.');
     }
 
-    const provider = dto.provider || 'SQUARE';
+    const provider = dto.provider || 'STRIPE';
     let isSuccess = true;
-    let providerPaymentId = dto.paymentMethodId || `sq_${Date.now()}`;
+    let providerPaymentId = dto.paymentMethodId || `pi_${Date.now()}`;
     let errorMessage: string | null = null;
 
-    if (provider === 'SQUARE') {
+    if (provider === 'STRIPE' || provider === 'SQUARE') {
       try {
-        const sqResult = await this.squareService.processSquarePayment({
-          sourceId: dto.paymentMethodId,
+        const stripeResult = await this.stripeService.processStripePayment({
+          paymentMethodId: dto.paymentMethodId,
           bookingId: booking.id,
           amount: Number(booking.totalPrice),
           currency: booking.currency,
           customerEmail: booking.passengerEmail,
           referenceNumber: booking.referenceNumber,
         });
-        isSuccess = sqResult.success;
-        providerPaymentId = sqResult.paymentId;
+        isSuccess = stripeResult.success;
+        providerPaymentId = stripeResult.paymentId;
       } catch (err: any) {
         isSuccess = false;
-        errorMessage = err.message || 'Square payment authorization failed';
+        errorMessage = err.message || 'Stripe payment authorization failed';
       }
     } else {
       const isMock = provider === 'MOCK';

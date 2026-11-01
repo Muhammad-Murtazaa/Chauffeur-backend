@@ -88,8 +88,9 @@ export class QuoteService {
       .returning();
 
     // 4. Calculate options for each vehicle type and save
-    const optionsToInsert = activeVehicleTypes.map((vt) => {
-      const pricing = this.pricingService.calculatePrice({
+    const optionsToInsert = [];
+    for (const vt of activeVehicleTypes) {
+      const pricing = await this.pricingService.calculatePrice({
         vehicleType: {
           id: vt.id,
           category: vt.category,
@@ -99,6 +100,7 @@ export class QuoteService {
           pricePerMinute: Number(vt.pricePerMinute),
           minimumFare: Number(vt.minimumFare),
           hourlyRate: Number(vt.hourlyRate),
+          minimumHours: Number(vt.minimumHours ?? 2),
         },
         distanceMeters: route.distanceMeters,
         durationSeconds: route.durationSeconds,
@@ -106,10 +108,11 @@ export class QuoteService {
         hours: dto.hours,
         pickupAt: pickupDate,
         pickupAddress: dto.pickupAddress,
+        dropoffAddress: dto.dropoffAddress,
         flightNumber: dto.flightNumber,
       });
 
-      return {
+      optionsToInsert.push({
         quoteId: insertedQuote.id,
         vehicleTypeId: vt.id,
         category: vt.category,
@@ -122,8 +125,8 @@ export class QuoteService {
         discount: String(pricing.discount),
         tax: String(pricing.tax),
         totalPrice: String(pricing.totalPrice),
-      };
-    });
+      });
+    }
 
     const insertedOptions = await this.db
       .insert(quoteVehicleOptions)

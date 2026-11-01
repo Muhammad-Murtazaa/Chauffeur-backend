@@ -3,6 +3,7 @@ import {
   Get,
   Patch,
   Post,
+  Delete,
   Body,
   Param,
   Query,
@@ -110,4 +111,39 @@ export class AdminController {
   ) {
     return this.adminService.updatePricingRule(id, body);
   }
+
+  /**
+   * Route Pricing (Flat-Rate Zone Pricing)
+   */
+  @Get('route-pricing')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get all flat-rate route pricing rules with vehicle type info' })
+  async getRoutePricing() {
+    return this.adminService.getRoutePricing();
+  }
+
+  @Post('route-pricing')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create a new flat-rate route pricing rule (e.g. JFK to NYC = $165 for Sedan)' })
+  async createRoutePricing(@Body() body: any) {
+    return this.adminService.createRoutePricing(body);
+  }
+
+  @Patch('route-pricing/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update an existing flat-rate route pricing rule' })
+  async updateRoutePricing(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: any,
+  ) {
+    return this.adminService.updateRoutePricing(id, body);
+  }
+
+  @Delete('route-pricing/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a flat-rate route pricing rule' })
+  async deleteRoutePricing(@Param('id', ParseIntPipe) id: number) {
+    return this.adminService.deleteRoutePricing(id);
+  }
 }
+

@@ -745,6 +745,8 @@ export const vehicleTypes = pgTable(
       scale: 2,
     }).notNull().default("100.00"),
 
+    minimumHours: integer("minimum_hours").notNull().default(2),
+
     imageUrl: text("image_url"),
     description: text("description"),
 
@@ -764,6 +766,69 @@ export const vehicleTypes = pgTable(
     activeIdx: index("vehicle_types_is_active_idx").on(table.isActive),
   }),
 );
+
+/**
+ * =========================
+ * Route Pricing (Flat-Rate Zone Pricing)
+ * =========================
+ *
+ * Each row defines a fixed price for a specific route + vehicle type.
+ * Routes are matched by keyword patterns in origin/destination addresses.
+ * Example: JFK → NYC (all boroughs) = $165 for Sedan.
+ */
+
+export const routePricing = pgTable(
+  "route_pricing",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+
+    routeName: varchar("route_name", { length: 150 }).notNull(),
+
+    /** Comma-separated lowercase keywords to match pickup address (e.g. "jfk,kennedy") */
+    originKeywords: text("origin_keywords").notNull(),
+
+    /** Comma-separated lowercase keywords to match dropoff address (e.g. "manhattan,brooklyn,queens,bronx,staten island,new york") */
+    destinationKeywords: text("destination_keywords").notNull(),
+
+    vehicleTypeId: bigint("vehicle_type_id", { mode: "number" })
+      .notNull()
+      .references(() => vehicleTypes.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+
+    flatPrice: numeric("flat_price", { precision: 10, scale: 2 }).notNull(),
+
+    /** If true, the route also matches in reverse (City → Airport) */
+    isBidirectional: boolean("is_bidirectional").notNull().default(true),
+
+    isActive: boolean("is_active").notNull().default(true),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => ({
+    vehicleTypeIdx: index("route_pricing_vehicle_type_id_idx").on(
+      table.vehicleTypeId,
+    ),
+    activeIdx: index("route_pricing_is_active_idx").on(table.isActive),
+    routeVehicleUnique: uniqueIndex("route_pricing_route_vehicle_unique").on(
+      table.routeName,
+      table.vehicleTypeId,
+    ),
+  }),
+);
+
+export const routePricingRelations = relations(routePricing, ({ one }) => ({
+  vehicleType: one(vehicleTypes, {
+    fields: [routePricing.vehicleTypeId],
+    references: [vehicleTypes.id],
+  }),
+}));
 
 /**
  * =========================
@@ -1031,7 +1096,7 @@ export const payments = pgTable(
         onUpdate: "cascade",
       }),
 
-    provider: paymentProviderEnum("provider").notNull().default("SQUARE"),
+    provider: paymentProviderEnum("provider").notNull().default("STRIPE"),
 
     providerPaymentId: varchar("provider_payment_id", { length: 255 }),
     providerSessionId: varchar("provider_session_id", { length: 255 }),
@@ -1241,6 +1306,7 @@ export const vehicleTypesRelations = relations(
   ({ many }) => ({
     quoteOptions: many(quoteVehicleOptions),
     bookings: many(bookings),
+    routePricing: many(routePricing),
   }),
 );
 

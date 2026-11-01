@@ -12,7 +12,8 @@ import {
   rides, 
   vehicleTypes, 
   bookingAssignments, 
-  payments 
+  payments,
+  routePricing,
 } from '../database';
 import type { DrizzleDb } from '../database';
 
@@ -420,6 +421,7 @@ export class AdminService {
       pricePerMinute: Number(r.pricePerMinute),
       minimumFare: Number(r.minimumFare),
       hourlyRate: Number(r.hourlyRate || 100),
+      minimumHours: r.minimumHours ?? 2,
       imageUrl: r.imageUrl,
       description: r.description,
       isActive: r.isActive,
@@ -437,6 +439,7 @@ export class AdminService {
     pricePerMinute: number;
     minimumFare: number;
     hourlyRate: number;
+    minimumHours: number;
     description: string;
     imageUrl: string;
     isActive: boolean;
@@ -453,6 +456,7 @@ export class AdminService {
     if (dto.pricePerMinute !== undefined) updatePayload.pricePerMinute = String(dto.pricePerMinute);
     if (dto.minimumFare !== undefined) updatePayload.minimumFare = String(dto.minimumFare);
     if (dto.hourlyRate !== undefined) updatePayload.hourlyRate = String(dto.hourlyRate);
+    if (dto.minimumHours !== undefined) updatePayload.minimumHours = dto.minimumHours;
     if (dto.description !== undefined) updatePayload.description = dto.description;
     if (dto.imageUrl !== undefined) updatePayload.imageUrl = dto.imageUrl;
     if (dto.isActive !== undefined) updatePayload.isActive = dto.isActive;
@@ -479,8 +483,140 @@ export class AdminService {
         pricePerMinute: Number(updated.pricePerMinute),
         minimumFare: Number(updated.minimumFare),
         hourlyRate: Number(updated.hourlyRate),
+        minimumHours: updated.minimumHours,
         isActive: updated.isActive,
       },
     };
   }
+
+  /**
+   * 5. Route Pricing (Flat-Rate Zone Pricing) CRUD
+   */
+  async getRoutePricing() {
+    const routes = await this.db
+      .select({
+        id: routePricing.id,
+        routeName: routePricing.routeName,
+        originKeywords: routePricing.originKeywords,
+        destinationKeywords: routePricing.destinationKeywords,
+        vehicleTypeId: routePricing.vehicleTypeId,
+        flatPrice: routePricing.flatPrice,
+        isBidirectional: routePricing.isBidirectional,
+        isActive: routePricing.isActive,
+        createdAt: routePricing.createdAt,
+        updatedAt: routePricing.updatedAt,
+        vehicleCategory: vehicleTypes.category,
+        vehicleTypeName: vehicleTypes.name,
+      })
+      .from(routePricing)
+      .leftJoin(vehicleTypes, eq(routePricing.vehicleTypeId, vehicleTypes.id))
+      .orderBy(routePricing.routeName, vehicleTypes.id);
+
+    return routes.map((r) => ({
+      ...r,
+      flatPrice: Number(r.flatPrice),
+    }));
+  }
+
+  async createRoutePricing(dto: {
+    routeName: string;
+    originKeywords: string;
+    destinationKeywords: string;
+    vehicleTypeId: number;
+    flatPrice: number;
+    isBidirectional?: boolean;
+    isActive?: boolean;
+  }) {
+    // Validate vehicle type exists
+    const [vt] = await this.db
+      .select()
+      .from(vehicleTypes)
+      .where(eq(vehicleTypes.id, dto.vehicleTypeId));
+
+    if (!vt) {
+      throw new NotFoundException(`Vehicle type #${dto.vehicleTypeId} not found`);
+    }
+
+    const [created] = await this.db
+      .insert(routePricing)
+      .values({
+        routeName: dto.routeName,
+        originKeywords: dto.originKeywords.toLowerCase().trim(),
+        destinationKeywords: dto.destinationKeywords.toLowerCase().trim(),
+        vehicleTypeId: dto.vehicleTypeId,
+        flatPrice: String(dto.flatPrice),
+        isBidirectional: dto.isBidirectional ?? true,
+        isActive: dto.isActive ?? true,
+      })
+      .returning();
+
+    return {
+      success: true,
+      message: `Route pricing "${dto.routeName}" for ${vt.name} created at $${dto.flatPrice}`,
+      routePricing: {
+        ...created,
+        flatPrice: Number(created.flatPrice),
+        vehicleCategory: vt.category,
+        vehicleTypeName: vt.name,
+      },
+    };
+  }
+
+  async updateRoutePricing(id: number, dto: Partial<{
+    routeName: string;
+    originKeywords: string;
+    destinationKeywords: string;
+    vehicleTypeId: number;
+    flatPrice: number;
+    isBidirectional: boolean;
+    isActive: boolean;
+  }>) {
+    const updatePayload: any = {
+      updatedAt: new Date(),
+    };
+
+    if (dto.routeName !== undefined) updatePayload.routeName = dto.routeName;
+    if (dto.originKeywords !== undefined) updatePayload.originKeywords = dto.originKeywords.toLowerCase().trim();
+    if (dto.destinationKeywords !== undefined) updatePayload.destinationKeywords = dto.destinationKeywords.toLowerCase().trim();
+    if (dto.vehicleTypeId !== undefined) updatePayload.vehicleTypeId = dto.vehicleTypeId;
+    if (dto.flatPrice !== undefined) updatePayload.flatPrice = String(dto.flatPrice);
+    if (dto.isBidirectional !== undefined) updatePayload.isBidirectional = dto.isBidirectional;
+    if (dto.isActive !== undefined) updatePayload.isActive = dto.isActive;
+
+    const [updated] = await this.db
+      .update(routePricing)
+      .set(updatePayload)
+      .where(eq(routePricing.id, id))
+      .returning();
+
+    if (!updated) {
+      throw new NotFoundException(`Route pricing #${id} not found`);
+    }
+
+    return {
+      success: true,
+      message: `Route pricing "${updated.routeName}" updated to $${Number(updated.flatPrice)}`,
+      routePricing: {
+        ...updated,
+        flatPrice: Number(updated.flatPrice),
+      },
+    };
+  }
+
+  async deleteRoutePricing(id: number) {
+    const [deleted] = await this.db
+      .delete(routePricing)
+      .where(eq(routePricing.id, id))
+      .returning();
+
+    if (!deleted) {
+      throw new NotFoundException(`Route pricing #${id} not found`);
+    }
+
+    return {
+      success: true,
+      message: `Route pricing "${deleted.routeName}" deleted successfully`,
+    };
+  }
 }
+

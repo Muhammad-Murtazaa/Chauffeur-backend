@@ -3,17 +3,17 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ProcessPaymentDto {
   @ApiPropertyOptional({
-    example: 'SQUARE',
-    enum: ['SQUARE', 'MOCK', 'CASH'],
-    default: 'SQUARE',
+    example: 'STRIPE',
+    enum: ['STRIPE', 'SQUARE', 'MOCK', 'CASH'],
+    default: 'STRIPE',
   })
-  @IsEnum(['SQUARE', 'MOCK', 'CASH'])
+  @IsEnum(['STRIPE', 'SQUARE', 'MOCK', 'CASH'])
   @IsOptional()
-  provider?: 'SQUARE' | 'MOCK' | 'CASH' = 'SQUARE';
+  provider?: 'STRIPE' | 'SQUARE' | 'MOCK' | 'CASH' = 'STRIPE';
 
   @ApiPropertyOptional({
-    example: 'cnon:card-nonce-ok',
-    description: 'Payment token or source ID from Square Web Payments SDK',
+    example: 'pm_card_visa',
+    description: 'Payment token, PaymentIntent ID, or PaymentMethod ID from Stripe SDK',
   })
   @IsString()
   @IsOptional()

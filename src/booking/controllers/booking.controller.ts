@@ -13,7 +13,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { BookingService } from '../services/booking.service';
 import { PaymentService } from '../payment/payment.service';
 import { CreateBookingDto, ProcessPaymentDto, CancelBookingDto } from '../dto';
-import { SquareService } from '../payment/square.service';
+import { StripeService } from '../payment/stripe.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 
@@ -25,7 +25,7 @@ export class BookingController {
   constructor(
     private readonly bookingService: BookingService,
     private readonly paymentService: PaymentService,
-    private readonly squareService: SquareService,
+    private readonly stripeService: StripeService,
   ) {}
 
   @Post()
@@ -55,16 +55,23 @@ export class BookingController {
     return this.bookingService.getBookingDetails(id, user);
   }
 
+  @Get('payment/stripe-config')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get Stripe Elements publishable key and client configuration' })
+  getStripeConfig() {
+    return this.stripeService.getStripeConfig();
+  }
+
   @Get('payment/square-config')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Get Square Web Payments SDK client configuration' })
-  getSquareConfig() {
-    return this.squareService.getSquareConfig();
+  @ApiOperation({ summary: 'Legacy alias: redirects/returns payment client configuration' })
+  getLegacyPaymentConfig() {
+    return this.stripeService.getStripeConfig();
   }
 
   @Post(':id/create-payment-intent')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Initialize Square payment session for booking' })
+  @ApiOperation({ summary: 'Initialize Stripe payment session for booking' })
   async createPaymentIntent(
     @CurrentUser('id') userId: number,
     @Param('id', ParseIntPipe) id: number,
@@ -73,7 +80,7 @@ export class BookingController {
       id: userId,
       role: 'CUSTOMER',
     });
-    return this.squareService.createPaymentIntent({
+    return this.stripeService.createPaymentIntent({
       amount: Number(booking.totalPrice),
       currency: booking.currency,
       bookingId: booking.id,
