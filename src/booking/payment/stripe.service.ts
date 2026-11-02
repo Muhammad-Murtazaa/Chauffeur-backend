@@ -51,7 +51,7 @@ export class StripeService {
     if (
       this.secretKey &&
       !this.secretKey.includes('placeholder') &&
-      this.secretKey.startsWith('sk_')
+      (this.secretKey.startsWith('sk_') || this.secretKey.startsWith('rk_'))
     ) {
       try {
         this.stripeClient = new Stripe(this.secretKey, {
