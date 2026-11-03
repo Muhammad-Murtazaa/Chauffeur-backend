@@ -121,8 +121,14 @@ export class PaymentService {
       changedByUserId: userId,
       reason: isSuccess
         ? `Payment of ${booking.currency} ${booking.totalPrice} processed successfully via ${provider}. Transaction ID: ${providerPaymentId}`
-        : `Payment failed via ${provider}. Reason: Simulated decline.`,
+        : `Payment failed via ${provider}. Reason: ${errorMessage || 'Payment authorization failed'}.`,
     });
+
+    if (!isSuccess) {
+      throw new BadRequestException(
+        errorMessage || 'Payment authorization failed. Please check your card details and try again.',
+      );
+    }
 
     // 4. Auto-assign a driver immediately after successful payment
     let autoAssignment: { assigned: boolean; message: string; assignment?: any } | null = null;
