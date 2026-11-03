@@ -51,7 +51,7 @@ export class EmailService {
       'NYC Premier Chauffeur <onboarding@resend.dev>';
     this.adminEmail =
       this.configService.get<string>('ADMIN_NOTIFICATION_EMAIL') ||
-      'info@nycpremierlimo.com';
+      'Hmynyc44@gmail.com';
   }
 
   /**
@@ -134,15 +134,14 @@ export class EmailService {
           <span class="info-label">Date & Time:</span>
           <span class="info-value">${formattedDate} (EST)</span>
         </div>
-        ${
-          booking.flightNumber
-            ? `
+        ${booking.flightNumber
+        ? `
         <div class="info-row">
           <span class="info-label">Flight Number:</span>
           <span class="info-value">${booking.flightNumber}</span>
         </div>`
-            : ''
-        }
+        : ''
+      }
       </div>
 
       <!-- Vehicle & Passenger Details Card -->
@@ -164,15 +163,14 @@ export class EmailService {
           <span class="info-label">Contact Phone:</span>
           <span class="info-value">${booking.passengerPhone}</span>
         </div>
-        ${
-          booking.specialInstructions
-            ? `
+        ${booking.specialInstructions
+        ? `
         <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08);">
           <div class="info-label" style="font-size: 12px; margin-bottom: 4px;">Special Instructions:</div>
           <div style="font-size: 13px; color: #cbd5e1; font-style: italic;">"${booking.specialInstructions}"</div>
         </div>`
-            : ''
-        }
+        : ''
+      }
       </div>
 
       <!-- Fare Summary -->
@@ -188,7 +186,7 @@ export class EmailService {
     <div class="footer">
       <p style="margin: 0 0 8px 0;">Need to adjust your itinerary or flight details?</p>
       <p style="margin: 0 0 12px 0;">
-        Call 24/7 Dispatch: <a href="tel:+13478889797">(347) 888-9797</a> &nbsp;|&nbsp; 
+        Call 24/7 Dispatch: <a href="tel:+13478889797">(917) 841-0044</a> &nbsp;|&nbsp; 
         <a href="https://wa.me/13478889797" target="_blank">Chat on WhatsApp</a>
       </p>
       <p style="font-size: 11px; color: #475569; margin: 0;">
