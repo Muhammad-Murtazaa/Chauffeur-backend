@@ -186,8 +186,8 @@ export class EmailService {
     <div class="footer">
       <p style="margin: 0 0 8px 0;">Need to adjust your itinerary or flight details?</p>
       <p style="margin: 0 0 12px 0;">
-        Call 24/7 Dispatch: <a href="tel:+13478889797">(917) 841-0044</a> &nbsp;|&nbsp; 
-        <a href="https://wa.me/13478889797" target="_blank">Chat on WhatsApp</a>
+        Call 24/7 Dispatch: <a href="tel:+19178410044">(917) 841-0044</a> &nbsp;|&nbsp; 
+        <a href="https://wa.me/19178410044" target="_blank">Chat on WhatsApp</a>
       </p>
       <p style="font-size: 11px; color: #475569; margin: 0;">
         &copy; ${new Date().getFullYear()} NYC Premier Chauffeur. All rights reserved.
