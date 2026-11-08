@@ -7,6 +7,7 @@ import {
   IsDateString,
   Min,
   Max,
+  IsBoolean,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -111,6 +112,16 @@ export class CreateQuoteDto {
   @IsString()
   @IsOptional()
   flightNumber?: string;
+
+  @ApiPropertyOptional({ example: true, description: 'Add a child seat to the ride' })
+  @IsBoolean()
+  @IsOptional()
+  childSeat?: boolean;
+
+  @ApiPropertyOptional({ example: true, description: 'Add meet-and-greet service' })
+  @IsBoolean()
+  @IsOptional()
+  meetAndGreet?: boolean;
 
   @ApiPropertyOptional({ example: 'USD', default: 'USD' })
   @IsString()

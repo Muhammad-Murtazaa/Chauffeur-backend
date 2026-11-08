@@ -30,8 +30,9 @@ export class PaymentService {
    */
   async processPayment(
     bookingId: number,
-    userId: number,
+    userId: number | null,
     dto: ProcessPaymentDto,
+    guestAuthorized = false,
   ) {
     const [booking] = await this.db
       .select()
@@ -42,7 +43,7 @@ export class PaymentService {
       throw new NotFoundException(`Booking with ID ${bookingId} not found.`);
     }
 
-    if (booking.customerId !== userId) {
+    if (booking.customerId !== userId && !guestAuthorized) {
       throw new BadRequestException(
         'You are not authorized to process payment for this booking.',
       );

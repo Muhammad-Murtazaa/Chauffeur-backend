@@ -953,11 +953,13 @@ export const bookings = pgTable(
     referenceNumber: varchar("reference_number", { length: 50 }).notNull(),
 
     customerId: bigint("customer_id", { mode: "number" })
-      .notNull()
       .references(() => users.id, {
         onDelete: "cascade",
         onUpdate: "cascade",
       }),
+
+    // Anonymous bookings are authorized through a one-time secret whose hash is stored here.
+    guestAccessTokenHash: varchar("guest_access_token_hash", { length: 64 }),
 
     quoteId: bigint("quote_id", { mode: "number" }).references(
       () => quotes.id,
@@ -998,6 +1000,7 @@ export const bookings = pgTable(
       precision: 10,
       scale: 2,
     }).notNull().default("0.00"),
+    extras: numeric("extras", { precision: 10, scale: 2 }).notNull().default("0.00"),
     discount: numeric("discount", {
       precision: 10,
       scale: 2,

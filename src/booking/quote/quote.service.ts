@@ -59,10 +59,59 @@ export class QuoteService {
       throw new BadRequestException('No vehicle categories available for quoting.');
     }
 
+    // 3. Keep only vehicle types with an explicitly configured flat route or
+    // hourly rate. Unconfigured routes are request-only; never estimate them.
+    const optionsToInsert = [];
+    for (const vt of activeVehicleTypes) {
+      const pricing = await this.pricingService.calculatePrice({
+        vehicleType: {
+          id: vt.id,
+          category: vt.category,
+          name: vt.name,
+          baseFare: Number(vt.baseFare),
+          pricePerDistance: Number(vt.pricePerDistance),
+          pricePerMinute: Number(vt.pricePerMinute),
+          minimumFare: Number(vt.minimumFare),
+          hourlyRate: Number(vt.hourlyRate),
+          minimumHours: Number(vt.minimumHours ?? 2),
+        },
+        distanceMeters: route.distanceMeters,
+        durationSeconds: route.durationSeconds,
+        bookingType: dto.bookingType,
+        hours: dto.hours,
+        pickupAt: pickupDate,
+        pickupAddress: dto.pickupAddress,
+        dropoffAddress: dto.dropoffAddress,
+        flightNumber: dto.flightNumber,
+        extraCharge: (dto.childSeat ? 15 : 0) + (dto.meetAndGreet ? 35 : 0),
+      });
+
+      if (!pricing) continue;
+      optionsToInsert.push({
+        vehicleTypeId: vt.id,
+        category: vt.category,
+        name: vt.name,
+        basePrice: String(pricing.basePrice),
+        distancePrice: String(pricing.distancePrice),
+        durationPrice: String(pricing.durationPrice),
+        surcharges: String(pricing.surcharges),
+        extras: String(pricing.extras),
+        discount: String(pricing.discount),
+        tax: String(pricing.tax),
+        totalPrice: String(pricing.totalPrice),
+      });
+    }
+
+    if (!optionsToInsert.length) {
+      throw new BadRequestException(
+        'This trip needs a custom quote. No fixed fare is configured for this route or vehicle.',
+      );
+    }
+
     // Quote expires in 15 minutes
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-    // 3. Insert Quote record
+    // 4. Insert the quote only after confirming fixed fares are available.
     const [insertedQuote] = await this.db
       .insert(quotes)
       .values({
@@ -87,50 +136,14 @@ export class QuoteService {
       })
       .returning();
 
-    // 4. Calculate options for each vehicle type and save
-    const optionsToInsert = [];
-    for (const vt of activeVehicleTypes) {
-      const pricing = await this.pricingService.calculatePrice({
-        vehicleType: {
-          id: vt.id,
-          category: vt.category,
-          name: vt.name,
-          baseFare: Number(vt.baseFare),
-          pricePerDistance: Number(vt.pricePerDistance),
-          pricePerMinute: Number(vt.pricePerMinute),
-          minimumFare: Number(vt.minimumFare),
-          hourlyRate: Number(vt.hourlyRate),
-          minimumHours: Number(vt.minimumHours ?? 2),
-        },
-        distanceMeters: route.distanceMeters,
-        durationSeconds: route.durationSeconds,
-        bookingType: dto.bookingType,
-        hours: dto.hours,
-        pickupAt: pickupDate,
-        pickupAddress: dto.pickupAddress,
-        dropoffAddress: dto.dropoffAddress,
-        flightNumber: dto.flightNumber,
-      });
-
-      optionsToInsert.push({
-        quoteId: insertedQuote.id,
-        vehicleTypeId: vt.id,
-        category: vt.category,
-        name: vt.name,
-        basePrice: String(pricing.basePrice),
-        distancePrice: String(pricing.distancePrice),
-        durationPrice: String(pricing.durationPrice),
-        surcharges: String(pricing.surcharges),
-        extras: String(pricing.extras),
-        discount: String(pricing.discount),
-        tax: String(pricing.tax),
-        totalPrice: String(pricing.totalPrice),
-      });
-    }
+    const optionsWithQuote = optionsToInsert.map((option) => ({
+      ...option,
+      quoteId: insertedQuote.id,
+    }));
 
     const insertedOptions = await this.db
       .insert(quoteVehicleOptions)
-      .values(optionsToInsert)
+      .values(optionsWithQuote)
       .returning();
 
     // Merge vehicle metadata (capacity, image, etc.) into options

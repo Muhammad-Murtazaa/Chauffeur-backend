@@ -22,6 +22,27 @@
       "when": 1790513707894,
       "tag": "0002_complete_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794120000000,
+      "tag": "0004_guest_bookings",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794123600000,
+      "tag": "0005_booking_extras",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794127200000,
+      "tag": "0006_fixed_fares_and_fleet",
+      "breakpoints": true
     }
   ]
 }

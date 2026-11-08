@@ -45,20 +45,20 @@ async function run() {
   const defaultVehicleTypes = [
     {
       category: 'STANDARD',
-      name: 'Business Class Sedan',
+      name: 'Business Sedan',
       passengerCapacity: 3,
       luggageCapacity: 2,
       baseFare: 65.00,
       pricePerDistance: 3.20,
       pricePerMinute: 0.85,
       minimumFare: 75.00,
-      hourlyRate: 95.00,
+      hourlyRate: 101.00,
       description: 'Mercedes E-Class, BMW 5 Series, or Audi A6 with professional chauffeur.',
       imageUrl: 'https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=800&q=80',
     },
     {
       category: 'EXECUTIVE',
-      name: 'First Class Executive',
+      name: 'First Class',
       passengerCapacity: 3,
       luggageCapacity: 3,
       baseFare: 95.00,
@@ -91,13 +91,13 @@ async function run() {
       pricePerDistance: 4.80,
       pricePerMinute: 1.20,
       minimumFare: 130.00,
-      hourlyRate: 150.00,
+      hourlyRate: 120.00,
       description: 'Cadillac Escalade ESV, Lincoln Navigator, or Chevrolet Suburban.',
       imageUrl: 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=800&q=80',
     },
     {
       category: 'VAN',
-      name: 'VIP Sprinter Lounge Van',
+      name: 'Sprinter',
       passengerCapacity: 12,
       luggageCapacity: 12,
       baseFare: 180.00,
@@ -144,6 +144,15 @@ async function run() {
     } catch (err: any) {
       console.error(`Error seeding ${vt.category}:`, err.message);
     }
+  }
+
+  // Apply the flat-rate rules and customer-facing fleet updates after vehicle
+  // types have been seeded, so route rows can reference the correct categories.
+  for (const migrationFile of ['0003_route_pricing.sql', '0006_fixed_fares_and_fleet.sql']) {
+    const migrationPath = path.join(__dirname, '../../drizzle', migrationFile);
+    const migrationSql = fs.readFileSync(migrationPath, 'utf-8');
+    await pool.query(migrationSql);
+    console.log(`Applied ${migrationFile}`);
   }
 
   await pool.end();

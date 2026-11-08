@@ -24,6 +24,7 @@ import {
 } from '../../database/schema';
 import { CreateBookingDto, CancelBookingDto } from '../dto';
 import { EmailService } from '../../email';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 
 @Injectable()
 export class BookingService {
@@ -56,7 +57,7 @@ export class BookingService {
   /**
    * Create Booking from an active quote snapshot
    */
-  async createBookingFromQuote(userId: number, dto: CreateBookingDto) {
+  async createBookingFromQuote(userId: number | null, dto: CreateBookingDto) {
     // 1. Fetch Quote
     const [quote] = await this.db
       .select()
@@ -91,6 +92,10 @@ export class BookingService {
     }
 
     const referenceNumber = this.generateReferenceNumber();
+    const guestAccessToken = userId ? null : randomBytes(32).toString('hex');
+    const guestAccessTokenHash = guestAccessToken
+      ? createHash('sha256').update(guestAccessToken).digest('hex')
+      : null;
 
     // 3. Create Booking Record
     const [insertedBooking] = await this.db
@@ -98,6 +103,7 @@ export class BookingService {
       .values({
         referenceNumber,
         customerId: userId,
+        guestAccessTokenHash,
         quoteId: quote.id,
         bookingType: quote.bookingType,
         vehicleTypeId: selectedOption.vehicleTypeId,
@@ -113,6 +119,7 @@ export class BookingService {
         estimatedDurationSeconds: quote.durationSeconds,
         subtotal: selectedOption.basePrice,
         surcharges: selectedOption.surcharges,
+        extras: selectedOption.extras,
         discount: selectedOption.discount,
         tax: selectedOption.tax,
         totalPrice: selectedOption.totalPrice,
@@ -157,7 +164,11 @@ export class BookingService {
       reason: `Booking initialized with reference ${referenceNumber} via quote #${quote.id}.`,
     });
 
-    const bookingDetails = await this.getBookingDetails(insertedBooking.id, { id: userId, role: 'CUSTOMER' });
+    const bookingDetails = await this.getBookingDetails(
+      insertedBooking.id,
+      userId ? { id: userId, role: 'CUSTOMER' } : undefined,
+      guestAccessToken || undefined,
+    );
 
     // Send notifications via Resend asynchronously (non-blocking)
     Promise.all([
@@ -167,13 +178,19 @@ export class BookingService {
       // Failures are logged internally inside EmailService
     });
 
-    return bookingDetails;
+    return guestAccessToken
+      ? { ...bookingDetails, bookingAccessToken: guestAccessToken }
+      : bookingDetails;
   }
 
   /**
    * Get complete details of a single booking
    */
-  async getBookingDetails(bookingId: number, user: { id: number; role: string }) {
+  async getBookingDetails(
+    bookingId: number,
+    user?: { id: number; role: string } | null,
+    guestAccessToken?: string,
+  ) {
     const [booking] = await this.db
       .select({
         id: bookings.id,
@@ -194,6 +211,7 @@ export class BookingService {
         estimatedDurationSeconds: bookings.estimatedDurationSeconds,
         subtotal: bookings.subtotal,
         surcharges: bookings.surcharges,
+        extras: bookings.extras,
         discount: bookings.discount,
         tax: bookings.tax,
         totalPrice: bookings.totalPrice,
@@ -219,8 +237,27 @@ export class BookingService {
     }
 
     // Access Control
-    if (user.role === 'CUSTOMER' && booking.customerId !== user.id) {
+    if (user?.role === 'CUSTOMER' && booking.customerId !== user.id) {
       throw new ForbiddenException('Access denied to this reservation.');
+    }
+
+    if (!user || user.role === 'GUEST') {
+      const [tokenRecord] = await this.db
+        .select({ tokenHash: bookings.guestAccessTokenHash })
+        .from(bookings)
+        .where(eq(bookings.id, bookingId));
+      const expectedHash = tokenRecord?.tokenHash;
+      const suppliedHash = guestAccessToken
+        ? createHash('sha256').update(guestAccessToken).digest('hex')
+        : '';
+      const validToken = Boolean(
+        expectedHash &&
+          suppliedHash.length === expectedHash.length &&
+          timingSafeEqual(Buffer.from(suppliedHash), Buffer.from(expectedHash)),
+      );
+      if (!validToken) {
+        throw new ForbiddenException('A valid booking access token is required.');
+      }
     }
 
     // Fetch Stops

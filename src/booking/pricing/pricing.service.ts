@@ -2,7 +2,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { DRIZZLE } from '../../database';
 import type { DrizzleDb } from '../../database';
-import { routePricing, vehicleTypes } from '../../database/schema';
+import { routePricing } from '../../database/schema';
 
 export interface VehicleTypeRateCard {
   id: number;
@@ -107,7 +107,7 @@ export class PricingService {
    * Priority:
    *  1. HOURLY bookings → use vehicleType.hourlyRate × hours
    *  2. Flat-rate route match → use route_pricing.flat_price
-   *  3. Fallback → distance-based calculation (baseFare + mileage + time)
+   * Unconfigured routes do not receive an estimated price.
    */
   async calculatePrice(params: {
     vehicleType: VehicleTypeRateCard;
@@ -119,7 +119,8 @@ export class PricingService {
     pickupAddress?: string;
     dropoffAddress?: string;
     flightNumber?: string;
-  }): Promise<PricingCalculationResult> {
+    extraCharge?: number;
+  }): Promise<PricingCalculationResult | null> {
     const {
       vehicleType,
       distanceMeters,
@@ -129,22 +130,26 @@ export class PricingService {
       pickupAt,
       pickupAddress = '',
       dropoffAddress = '',
-      flightNumber,
+      extraCharge = 0,
     } = params;
 
-    const hourlyRate = Number(vehicleType.hourlyRate || 100);
+    const hourlyRate = Number(vehicleType.hourlyRate);
     const minimumHours = Number(vehicleType.minimumHours || 2);
+
+    // There is no defined return-trip fare schedule, so leave it for a custom quote.
+    if (bookingType === 'RETURN') return null;
 
     let basePrice = 0;
     let distancePrice = 0;
     let durationPrice = 0;
     let discount = 0;
     let surcharges = 0;
-    const extras = 0;
+    const extras = Number(extraCharge) || 0;
     let matchedRoute: string | null = null;
 
     if (bookingType === 'HOURLY') {
       // ─── HOURLY BOOKING ───────────────────────────────
+      if (!Number.isFinite(hourlyRate) || hourlyRate <= 0) return null;
       const billableHours = Math.max(minimumHours, hours || minimumHours);
       basePrice = Math.round(billableHours * hourlyRate * 100) / 100;
     } else {
@@ -165,66 +170,22 @@ export class PricingService {
         distancePrice = 0;
         durationPrice = 0;
       } else {
-        // Fallback: distance-based calculation
-        const baseFare = Number(vehicleType.baseFare);
-        const ratePerKm = Number(vehicleType.pricePerDistance);
-        const ratePerMin = Number(vehicleType.pricePerMinute);
-        const minFare = Number(vehicleType.minimumFare);
-
-        const distanceKm = distanceMeters / 1000;
-        const durationMinutes = durationSeconds / 60;
-
-        basePrice = baseFare;
-        distancePrice = Math.round(distanceKm * ratePerKm * 100) / 100;
-        durationPrice = Math.round(durationMinutes * ratePerMin * 100) / 100;
-
-        const subtotalRaw = baseFare + distancePrice + durationPrice;
-
-        if (subtotalRaw < minFare) {
-          basePrice = minFare;
-          distancePrice = 0;
-          durationPrice = 0;
-        }
+        // Every point-to-point fare must come from an explicit flat-rate rule.
+        // No distance/time fallback is permitted for customer quotes.
+        return null;
       }
 
-      // RETURN trip modifier (applies to both flat-rate and distance-based)
-      if (bookingType === 'RETURN') {
-        const subtotal = basePrice + distancePrice + durationPrice;
-        const returnTotal = subtotal * 1.9; // 10% roundtrip discount
-        discount = Math.round(subtotal * 0.1 * 100) / 100;
-        basePrice = Math.round(returnTotal * 100) / 100;
-        distancePrice = 0;
-        durationPrice = 0;
-      }
     }
 
     // ─── SURCHARGES ──────────────────────────────────────
-    // Airport surcharge (only for non-flat-rate routes; flat rates already include airport fees)
-    if (!matchedRoute) {
-      const isAirport =
-        pickupAddress.toLowerCase().includes('airport') ||
-        pickupAddress.toLowerCase().includes('jfk') ||
-        pickupAddress.toLowerCase().includes('lga') ||
-        pickupAddress.toLowerCase().includes('ewr') ||
-        Boolean(flightNumber);
-
-      if (isAirport) {
-        surcharges += 25.0; // Standard premium airport gate & luggage surcharge
-      }
-    }
-
-    // Night surcharge (10 PM to 6 AM)
-    const pickupHour = new Date(pickupAt).getUTCHours();
-    if (pickupHour >= 22 || pickupHour < 6) {
-      const nightFee = Math.round((basePrice + distancePrice) * 0.15 * 100) / 100;
-      surcharges += nightFee;
-    }
+    // Flat fares and hourly rates receive no automatic time, distance,
+    // airport, or night adjustments.
 
     const calculatedSubtotal =
       basePrice + distancePrice + durationPrice + surcharges + extras - discount;
 
-    // Tax calculation (8.875% NY sales tax standard)
-    const tax = Math.round(calculatedSubtotal * 0.08875 * 100) / 100;
+    // Display the configured fare without a calculated tax or surcharge.
+    const tax = 0;
     const totalPrice = Math.round((calculatedSubtotal + tax) * 100) / 100;
 
     return {
